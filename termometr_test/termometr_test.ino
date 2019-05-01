@@ -25,8 +25,6 @@ BLECharacteristic healthThermometerChar("2A1C", BLENotify, charArraySize);
 unsigned char temperatureCharArray[charArraySize] = { 0 };
 /* ============================================== </BLE stuff> ============================================== */
 
-long previousMillis = 0;  // last time the temperature was checked, in ms
-
 void setup(void)
 {
     Serial.begin(9600);
@@ -60,14 +58,9 @@ void loop(void)
         // turn on the LED to indicate the connection:
         digitalWrite(13, HIGH);
 
-        // check the temperature every 200ms
-        // as long as the central is still connected:
         while (central.connected()) {
-            long currentMillis = millis();
-            if (currentMillis - previousMillis >= 200) {
-                previousMillis = currentMillis;
-                updateTemperature();
-            }
+            updateTemperature();
+            delay(1000);
         }
         // when the central disconnects, turn off the LED:
         digitalWrite(13, LOW);
