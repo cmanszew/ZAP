@@ -18,14 +18,14 @@ DeviceAddress deviceAddress;
 
 
 /* ============================================== <BLE stuff>  ============================================== */
-BLEPeripheral blePeripheral;   // BLE Peripheral Device (the board you're programming)
-BLEService TempService("1809"); // Temperature Service - it doesn't matter what you call it as long as you have the correct UUID
-
-// BLE temperature Measurement Characteristic"
-BLECharacteristic TempChar("2A1C", BLERead | BLEIndicate, 2);
+#define charArraySize 5
+BLEPeripheral blePeripheral;
+BLEService healthThermometerService("1809");
+BLECharacteristic healthThermometerChar("2A1C", BLENotify, charArraySize);
+unsigned char temperatureCharArray[charArraySize] = { 0 };
+/* ============================================== </BLE stuff> ============================================== */
 
 long previousMillis = 0;  // last time the temperature was checked, in ms
-/* ============================================== </BLE stuff> ============================================== */
 
 void setup(void)
 {
@@ -40,18 +40,11 @@ void setup(void)
 /* ============================================== <BLE stuff>  ============================================== */
     pinMode(13, OUTPUT);   // initialize the LED on pin 13 to indicate when a central is connected
 
-    /* Set a local name for the BLE device
-     This name will appear in advertising packets
-     and can be used by remote devices to identify this BLE device
-     The name can be changed but maybe be truncated based on space left in advertisement packet */
-    blePeripheral.setLocalName("TempSketch");
-    blePeripheral.setAdvertisedServiceUuid(TempService.uuid());  // add the service UUID
-    blePeripheral.addAttribute(TempService);   // Add the BLE temperatureservice
-    blePeripheral.addAttribute(TempChar); // add the RSC Measurement characteristic
+    blePeripheral.setLocalName("BLEThermometer");
+    blePeripheral.setAdvertisedServiceUuid(healthThermometerService.uuid());
+    blePeripheral.addAttribute(healthThermometerService);
+    blePeripheral.addAttribute(healthThermometerChar);
 
-    /* Now activate the BLE device.  It will start continuously transmitting BLE
-     advertising packets and will be visible to remote BLE central devices
-     until it receives a new connection */
     blePeripheral.begin();
     Serial.println("Bluetooth device active, waiting for connections...");
 /* ============================================== </BLE stuff> ============================================== */
@@ -59,13 +52,10 @@ void setup(void)
 
 void loop(void)
 {
-    // listen for BLE peripherals to connect:
     BLECentral central = blePeripheral.central();
 
-    // if a central is connected to peripheral:
     if (central) {
         Serial.print("Connected to central: ");
-        // print the central's MAC address:
         Serial.println(central.address());
         // turn on the LED to indicate the connection:
         digitalWrite(13, HIGH);
@@ -74,7 +64,6 @@ void loop(void)
         // as long as the central is still connected:
         while (central.connected()) {
             long currentMillis = millis();
-            // if 200ms have passed, check the temperaturemeasurement:
             if (currentMillis - previousMillis >= 200) {
                 previousMillis = currentMillis;
                 updateTemperature();
@@ -92,10 +81,18 @@ void updateTemperature(void)
     sensors.requestTemperatures();
     float tempC = sensors.getTempC(deviceAddress);
     Serial.print("Temp C: ");
-    Serial.print(tempC);
-    Serial.println();
+    Serial.println(tempC);
 
-    const unsigned char temperatureCharArray[2] = { 63, (char)tempC};
-    TempChar.setValue(temperatureCharArray, 2);  // and update the heart rate measurement characteristic
-    delay(1000);
+    unsigned int IEEE11073tempC = floatTempToIEEE11073(tempC);
+    memcpy(temperatureCharArray + 1, &IEEE11073tempC, charArraySize - 1);
+    healthThermometerChar.setValue(temperatureCharArray, charArraySize);
+}
+
+unsigned int floatTempToIEEE11073(float val)
+{
+    unsigned int mantissa = val * 100;
+    unsigned int exponent = 0xFE000000;
+
+    mantissa = (((mantissa >> 8) & 0x00800000) | mantissa) & 0x00ffffff;
+    return exponent | mantissa;
 }
